@@ -19,7 +19,7 @@ github_pages/book/
 github_pages/doc/
 
 # patched GDB directory
-/rust-os-gdb/
+#/rust-os-gdb/
 
 # Theseus's local build server
 .theseus_build_server/
@@ -37,3 +37,6 @@ github_pages/doc/
 # limine bootloader files
 /limine-prebuilt/
 
+#tags
+tag*
+.tag*

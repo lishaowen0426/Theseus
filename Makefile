@@ -825,7 +825,7 @@ else ifeq ($(boot_spec), uefi)
 	QEMU_FLAGS += -drive format=raw,file=$(iso)
 endif
 ## Don't reboot or shutdown upon failure or a triple reset
-QEMU_FLAGS += -no-reboot -no-shutdown
+QEMU_FLAGS += -no-reboot -no-shutdown -nographic
 ## Enable a GDB stub so we can connect GDB to the QEMU instance 
 QEMU_FLAGS += -s
 
