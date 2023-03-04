@@ -1,10 +1,4 @@
-use std::{
-    env, 
-    fmt::Write as stdWrite,
-    io::Write, 
-    path::PathBuf, 
-    process::Command
-};
+use std::{env, fmt::Write as stdWrite, io::Write, path::PathBuf, process::Command};
 
 /// Whether or not to use the `built` crate to emit the default `built.rs` file.
 const EMIT_BUILT_RS_FILE: bool = false;
@@ -103,7 +97,8 @@ fn emit_built_rs_file() {
     write!(
         &mut built_file,
         "#[allow(dead_code)]\npub const CUSTOM_CFG_STR: &str = r#\"{custom_cfgs_str}\"#;\n",
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 fn compile_asm() {
@@ -156,8 +151,11 @@ fn compile_asm() {
             .unwrap_or_else(|_| panic!("couldn't get file type of {file:?}"))
             .is_file()
         {
-            assert_eq!(file.path().extension(), Some("asm".as_ref()),
-                "File {:?} did not have '.asm' extension", file.path(),
+            assert_eq!(
+                file.path().extension(),
+                Some("asm".as_ref()),
+                "File {:?} did not have '.asm' extension",
+                file.path(),
             );
 
             let mut output_path = out_dir.join(file.path().file_name().unwrap());
@@ -173,8 +171,7 @@ fn compile_asm() {
                 .args(cflags.split(' '))
                 .status()
                 .expect("failed to acquire nasm output status")
-                .success()
-            );
+                .success());
         }
     }
 }

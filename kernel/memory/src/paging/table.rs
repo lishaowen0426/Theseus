@@ -7,26 +7,20 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use core::ops::{Index, IndexMut};
-use core::marker::PhantomData;
 use super::PageTableEntry;
 use crate::VirtualAddress;
-use pte_flags::PteFlagsArch;
+use core::marker::PhantomData;
+use core::ops::{Index, IndexMut};
 use kernel_config::memory::{
-    ENTRIES_PER_PAGE_TABLE,
-    PAGE_SHIFT,
-    P1_INDEX_SHIFT,
-    P2_INDEX_SHIFT,
-    P3_INDEX_SHIFT,
-    P4_INDEX_SHIFT,
-    RECURSIVE_P4_INDEX,
-    UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX,
+    ENTRIES_PER_PAGE_TABLE, P1_INDEX_SHIFT, P2_INDEX_SHIFT, P3_INDEX_SHIFT, P4_INDEX_SHIFT,
+    PAGE_SHIFT, RECURSIVE_P4_INDEX, UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX,
 };
+use pte_flags::PteFlagsArch;
 use zerocopy::FromBytes;
 
-
+use log::debug;
 /// The virtual address of the page table entry used to recursively map the
-/// root P4-level page table frame of the *currently-active* page table. 
+/// root P4-level page table frame of the *currently-active* page table.
 ///
 /// Theseus currently uses the 511th entry of the P4 table for mapping the higher-half kernel
 /// so it uses the 510th entry of P4 for this recursive mapping.
@@ -38,16 +32,16 @@ use zerocopy::FromBytes;
 /// NOTE: this must be kept in sync with the recursive index used in
 ///       and `nano_core/src/asm/bios/boot.asm`.
 ///
-/// See these links for more info: 
+/// See these links for more info:
 /// * <http://forum.osdev.org/viewtopic.php?f=1&p=176913>
 /// * <http://forum.osdev.org/viewtopic.php?f=15&t=25545>
 pub(crate) const P4: *mut Table<Level4> = VirtualAddress::new_canonical(
     RECURSIVE_P4_INDEX << (PAGE_SHIFT + P1_INDEX_SHIFT)
-    | RECURSIVE_P4_INDEX << (PAGE_SHIFT + P2_INDEX_SHIFT)
-    | RECURSIVE_P4_INDEX << (PAGE_SHIFT + P3_INDEX_SHIFT)
-    | RECURSIVE_P4_INDEX << (PAGE_SHIFT + P4_INDEX_SHIFT)
-).value() as *mut _;
-
+        | RECURSIVE_P4_INDEX << (PAGE_SHIFT + P2_INDEX_SHIFT)
+        | RECURSIVE_P4_INDEX << (PAGE_SHIFT + P3_INDEX_SHIFT)
+        | RECURSIVE_P4_INDEX << (PAGE_SHIFT + P4_INDEX_SHIFT),
+)
+.value() as *mut _;
 
 /// The virtual address of the page table entry used to recursively map the
 /// root P4-level page table frame of an upcoming (new) page table
@@ -61,11 +55,11 @@ pub(crate) const P4: *mut Table<Level4> = VirtualAddress::new_canonical(
 /// Thus, the value of this should be `0o177777_774_774_774_774_0000` (octal) on x86_64.
 pub(crate) const UPCOMING_P4: *mut Table<Level4> = VirtualAddress::new_canonical(
     UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX << (PAGE_SHIFT + P1_INDEX_SHIFT)
-    | UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX << (PAGE_SHIFT + P2_INDEX_SHIFT)
-    | UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX << (PAGE_SHIFT + P3_INDEX_SHIFT)
-    | UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX << (PAGE_SHIFT + P4_INDEX_SHIFT)
-).value() as *mut _;
-
+        | UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX << (PAGE_SHIFT + P2_INDEX_SHIFT)
+        | UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX << (PAGE_SHIFT + P3_INDEX_SHIFT)
+        | UPCOMING_PAGE_TABLE_RECURSIVE_P4_INDEX << (PAGE_SHIFT + P4_INDEX_SHIFT),
+)
+.value() as *mut _;
 
 #[derive(FromBytes)]
 pub struct Table<L: TableLevel> {
@@ -74,11 +68,16 @@ pub struct Table<L: TableLevel> {
 }
 
 impl<L: TableLevel> Table<L> {
-    /// Zero out (clear) all entries in this page table frame. 
+    /// Zero out (clear) all entries in this page table frame.
     pub(crate) fn zero(&mut self) {
+        for i in 0..self.entries.len() {
+            self.entries[i].zero();
+        }
+        /*
         for entry in self.entries.iter_mut() {
             entry.zero();
         }
+        */
     }
 }
 
@@ -111,23 +110,25 @@ impl<L: HierarchicalLevel> Table<L> {
     }
 
     /// Returns a reference to the next lowest-level page table.
-    /// 
+    ///
     /// A convenience wrapper around `next_table_address()`; see that method for more.
     pub fn next_table(&self, index: usize) -> Option<&Table<L::NextLevel>> {
         // convert the next table address from a raw pointer back to a Table type
-        self.next_table_address(index).map(|vaddr| unsafe { &*(vaddr.value() as *const _) })
+        self.next_table_address(index)
+            .map(|vaddr| unsafe { &*(vaddr.value() as *const _) })
     }
 
     /// Returns a mutable reference to the next lowest-level page table.
-    /// 
+    ///
     /// A convenience wrapper around `next_table_address()`; see that method for more.
     pub fn next_table_mut(&mut self, index: usize) -> Option<&mut Table<L::NextLevel>> {
-        self.next_table_address(index).map(|vaddr| unsafe { &mut *(vaddr.value() as *mut _) })
+        self.next_table_address(index)
+            .map(|vaddr| unsafe { &mut *(vaddr.value() as *mut _) })
     }
 
-    /// Returns a mutable reference to the next lowest-level page table, 
+    /// Returns a mutable reference to the next lowest-level page table,
     /// creating and initializing a new one if it doesn't already exist.
-    /// 
+    ///
     /// A convenience wrapper around `next_table_address()`; see that method for more.
     ///
     /// TODO: return a `Result` here instead of panicking.
@@ -137,8 +138,12 @@ impl<L: HierarchicalLevel> Table<L> {
         flags: PteFlagsArch,
     ) -> &mut Table<L::NextLevel> {
         if self.next_table(index).is_none() {
-            assert!(!is_huge(&self[index].flags()), "mapping code does not support huge pages");
-            let af = frame_allocator::allocate_frames(1).expect("next_table_create(): no frames available");
+            assert!(
+                !is_huge(&self[index].flags()),
+                "mapping code does not support huge pages"
+            );
+            let af = frame_allocator::allocate_frames(1)
+                .expect("next_table_create(): no frames available");
             self[index].set_entry(
                 af.as_allocated_frame(),
                 flags.valid(true).writable(true), // must be valid and writable on x86_64

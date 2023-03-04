@@ -4,32 +4,31 @@
 extern crate alloc;
 extern crate heap;
 extern crate kernel_config;
-#[macro_use] extern crate log;
-extern crate memory;
-extern crate stack;
-extern crate no_drop;
-extern crate bootloader_modules;
+#[macro_use]
+extern crate log;
 extern crate boot_info;
+extern crate bootloader_modules;
+extern crate memory;
+extern crate no_drop;
+extern crate stack;
 
-use memory::{MmiRef, MappedPages, VirtualAddress, InitialMemoryMappings, EarlyIdentityMappedPages};
-use kernel_config::memory::{KERNEL_HEAP_START, KERNEL_HEAP_INITIAL_SIZE};
+use alloc::{string::String, vec::Vec};
 use boot_info::{BootInformation, Module};
-use alloc::{
-    string::String, 
-    vec::Vec,
-};
-use heap::HEAP_FLAGS;
-use stack::Stack;
-use no_drop::NoDrop;
 use bootloader_modules::BootloaderModule;
-
+use heap::HEAP_FLAGS;
+use kernel_config::memory::{KERNEL_HEAP_INITIAL_SIZE, KERNEL_HEAP_START};
+use memory::{
+    EarlyIdentityMappedPages, InitialMemoryMappings, MappedPages, MmiRef, VirtualAddress,
+};
+use no_drop::NoDrop;
+use stack::Stack;
 
 /// Initializes the virtual memory management system and returns a MemoryManagementInfo instance,
-/// which represents the initial (kernel) address space. 
+/// which represents the initial (kernel) address space.
 ///
 /// This consumes the given BootInformation, because after the memory system is initialized,
 /// the original BootInformation will be unmapped and inaccessible.
-/// 
+///
 /// Returns the following tuple, if successful:
 ///  1. The kernel's new MemoryManagementInfo,
 ///  2. the MappedPages of the kernel's text section,
@@ -43,7 +42,8 @@ use bootloader_modules::BootloaderModule;
 pub fn init_memory_management(
     boot_info: impl BootInformation,
     kernel_stack_start: VirtualAddress,
-) -> Result<(
+) -> Result<
+    (
         MmiRef,
         NoDrop<MappedPages>,
         NoDrop<MappedPages>,
@@ -51,8 +51,9 @@ pub fn init_memory_management(
         NoDrop<Stack>,
         Vec<BootloaderModule>,
         NoDrop<EarlyIdentityMappedPages>,
-    ), &'static str>
-{
+    ),
+    &'static str,
+> {
     // Initialize memory management: paging (create a new page table), essential kernel mappings
     let InitialMemoryMappings {
         mut page_table,
@@ -68,7 +69,7 @@ pub fn init_memory_management(
     // After this point, at which `memory::init()` has returned new objects that represent
     // the currently-executing code/data/stack, we must ensure they aren't dropped if an error occurs,
     // because that will cause them to be auto-unmapped.
-    // That will then cause all execution to stop and a processor fault/reset. 
+    // That will then cause all execution to stop and a processor fault/reset.
     // We use the `NoDrop` type wrapper to accomplish this.
     let stack = match Stack::from_pages(stack_guard_page, stack_pages.into_inner()) {
         Ok(s) => NoDrop::new(s),
@@ -81,10 +82,16 @@ pub fn init_memory_management(
     // Initialize the kernel heap.
     let heap_start = KERNEL_HEAP_START;
     let heap_initial_size = KERNEL_HEAP_INITIAL_SIZE;
-    
+
     let heap_mapped_pages = {
-        let pages = memory::allocate_pages_by_bytes_at(VirtualAddress::new_canonical(heap_start), heap_initial_size)?;
-        debug!("Initial heap starts at: {:#X}, size: {:#X}, pages: {:?}", heap_start, heap_initial_size, pages);
+        let pages = memory::allocate_pages_by_bytes_at(
+            VirtualAddress::new_canonical(heap_start),
+            heap_initial_size,
+        )?;
+        debug!(
+            "Initial heap starts at: {:#X}, size: {:#X}, pages: {:?}",
+            heap_start, heap_initial_size, pages
+        );
         let heap_mp = page_table.map_allocated_pages(pages, HEAP_FLAGS).map_err(|e| {
             error!("Failed to map kernel heap memory pages, {} bytes starting at virtual address {:#X}. Error: {:?}",
                 KERNEL_HEAP_INITIAL_SIZE, KERNEL_HEAP_START, e
@@ -105,13 +112,16 @@ pub fn init_memory_management(
         heap_mapped_pages,
     );
 
-    // Because bootloader modules may overlap with the actual boot information, 
+    // Because bootloader modules may overlap with the actual boot information,
     // we need to preserve those records here in a separate list,
     // such that we can unmap the boot info pages & frames here but still access that info in the future.
-    let bootloader_modules: Vec<BootloaderModule> = boot_info.modules()
-        .map(|m| m.name().map(|module_name|
-            BootloaderModule::new(m.start(), m.start() + m.len(), String::from(module_name))
-        ))
+    let bootloader_modules: Vec<BootloaderModule> = boot_info
+        .modules()
+        .map(|m| {
+            m.name().map(|module_name| {
+                BootloaderModule::new(m.start(), m.start() + m.len(), String::from(module_name))
+            })
+        })
         .collect::<Result<Vec<_>, _>>() // collect the `Vec<Result<...>>` into `Result<Vec<...>>`
         .map_err(|_e| "BUG: Bootloader module had invalid non-UTF8 name (cmdline) string")?;
 
@@ -126,6 +136,6 @@ pub fn init_memory_management(
         data_mapped_pages,
         stack,
         bootloader_modules,
-        identity_mapped_pages
+        identity_mapped_pages,
     ))
 }

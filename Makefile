@@ -956,7 +956,7 @@ run_pause: $(iso)
 ### Runs a gdb instance on the host machine. 
 ### Run this after invoking another QEMU target in a different terminal.
 gdb:
-	@rust-os-gdb/bin/rust-gdb "$(nano_core_binary)" \
+	@${HOME}/Code/rust-os-gdb/bin/rust-gdb "$(nano_core_binary)" \
 		-ex "symbol-file $(DEBUG_SYMBOLS_DIR)/`basename $(nano_core_binary)`.dbg" \
 		-ex "target remote :1234"
 
