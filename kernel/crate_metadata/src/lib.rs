@@ -120,6 +120,7 @@ pub enum CrateType {
     Application,
     Userspace,
     Executable,
+    Filesystem,
 }
 impl CrateType {
     fn first_char(&self) -> &'static str {
@@ -128,6 +129,7 @@ impl CrateType {
             CrateType::Application => "a",
             CrateType::Userspace => "u",
             CrateType::Executable => "e",
+            CrateType::Filesystem => "f",
         }
     }
 
@@ -139,6 +141,7 @@ impl CrateType {
             CrateType::Application => "_applications",
             CrateType::Userspace => "_userspace",
             CrateType::Executable => "_executables",
+            CrateType::Filesystem => "_filesystem",
         }
     }
 
@@ -176,6 +179,8 @@ impl CrateType {
             Ok((CrateType::Userspace, namespace_prefix, crate_name))
         } else if prefix.starts_with(CrateType::Executable.first_char()) {
             Ok((CrateType::Executable, namespace_prefix, crate_name))
+        } else if prefix.starts_with(CrateType::Filesystem.first_char()) {
+            Ok((CrateType::Filesystem, namespace_prefix, crate_name))
         } else {
             error!(
                 "module_name {:?} didn't start with a known CrateType prefix",

@@ -240,8 +240,10 @@ build: $(nano_core_binary)
 		--output-sysroot $(DEPS_SYSROOT_DIR)/lib/rustlib/$(TARGET)/lib \
 		-k ./kernel \
 		-a ./applications \
+		-f ./filesystems \
 		--kernel-prefix $(KERNEL_PREFIX) \
 		--app-prefix $(APP_PREFIX) \
+		--fs-prefix $(FS_PREFIX) \
 		-e "$(EXTRA_APP_CRATE_NAMES) libtheseus"
 
 ## Third, perform partial linking on each object file, which shrinks their size 
@@ -318,6 +320,7 @@ endif
 	@echo -e "\t TARGET: \"$(TARGET)\""
 	@echo -e "\t KERNEL_PREFIX: \"$(KERNEL_PREFIX)\""
 	@echo -e "\t APP_PREFIX: \"$(APP_PREFIX)\""
+	@echo -e "\t FS_PREFIX: \"$(FS_PREFIX)\""
 	@echo -e "\t THESEUS_CONFIG (before build.rs script): \"$(THESEUS_CONFIG)\""
 	THESEUS_CFLAGS='$(CFLAGS)' THESEUS_NANO_CORE_BUILD_DIR='$(NANO_CORE_BUILD_DIR)' RUST_TARGET_PATH='$(CFG_DIR)' RUSTFLAGS='$(RUSTFLAGS)' cargo build $(CARGOFLAGS) $(FEATURES) $(BUILD_STD_CARGOFLAGS) --target $(TARGET)
 

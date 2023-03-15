@@ -13,6 +13,7 @@ members = [
 	"theseus_features",  ## Must be included to realize global Cargo features across Theseus.
 	"kernel/[!.]*/",
 	"applications/[!.]*/",
+	"filesystems/[!.]*/",
 ]
 
 

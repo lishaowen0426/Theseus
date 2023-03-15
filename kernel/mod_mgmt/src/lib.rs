@@ -44,6 +44,10 @@ const EXTRA_FILES_DIRECTORY_DELIMITER: char = '!';
 /// The initial `CrateNamespace` that all kernel crates are added to by default.
 static INITIAL_KERNEL_NAMESPACE: Once<Arc<CrateNamespace>> = Once::new();
 
+
+/// The `CrateNamespace` that holds crates for filesystem
+static FILE_SYSTEM_NAMESPACE: Once<Arc<CrateNamespace>> = Once::new(); 
+
 /// Returns a reference to the default kernel namespace, 
 /// which must exist because it contains the initially-loaded kernel crates. 
 /// Returns None if the default namespace hasn't yet been initialized.
@@ -100,6 +104,22 @@ pub fn create_application_namespace(recursive_namespace: Option<Arc<CrateNamespa
     Ok(new_app_namespace)
 }
 
+/*
+pub fn create_filesysem_namespace(recursive_namespace: Option<Arc<CrateNamespace>>) -> Result<&'static Arc<CrateNamespace>, &'static str>{
+    // (1) use the initial kernel CrateNamespace as the new app namespace's recursive namespace if none was provided.
+    let recursive_namespace = recursive_namespace
+        .or_else(|| get_initial_kernel_namespace().cloned())
+        .ok_or("initial kernel CrateNamespace not yet initialized")?;
+
+    let default_fs_namespace_name = "_filesystem".to_string(); 
+    let root_namespace_dir = get_namespaces_directory().ok_or("Couldn't find the root namespace directory")?;
+    let default_fs_namespace_dir = VFSDirectory::create(default_fs_namespace_name.clone(), &root_namespace_dir)?;
+
+    Ok(FILE_SYSTEM_NAMESPACE.call_once(|| Arc::new(CrateNamespace::new(default_fs_namespace_name, NamespaceDir::new(default_fs_namespace_dir), Some(recursive_namespace)))))
+
+}
+*/
+
 
 /// Initializes the module management system based on the bootloader-provided modules, 
 /// and creates and returns the default `CrateNamespace` for kernel crates.
@@ -107,12 +127,17 @@ pub fn init(
     bootloader_modules: Vec<BootloaderModule>,
     kernel_mmi: &mut MemoryManagementInfo
 ) -> Result<&'static Arc<CrateNamespace>, &'static str> {
-    let (_namespaces_dir, default_kernel_namespace_dir) = parse_bootloader_modules_into_files(bootloader_modules, kernel_mmi)?;
+    let (_namespaces_dir, default_kernel_namespace_dir, default_fs_namespace_dir) = parse_bootloader_modules_into_files(bootloader_modules, kernel_mmi)?;
     // Create the default CrateNamespace for kernel crates.
-    let name = default_kernel_namespace_dir.lock().get_name();
-    debug!("default kernel namespace dir: {}", name);
-    let default_namespace = CrateNamespace::new(name, default_kernel_namespace_dir, None);
-    Ok(INITIAL_KERNEL_NAMESPACE.call_once(|| Arc::new(default_namespace)))
+    let kernel_name = default_kernel_namespace_dir.lock().get_name();
+    debug!("default kernel namespace dir: {}", kernel_name);
+    let fs_name = default_fs_namespace_dir.lock().get_name();
+    debug!("default fs namespace dir: {}", fs_name);
+    let default_kernel_namespace = Arc::new(CrateNamespace::new(kernel_name, default_kernel_namespace_dir, None));
+    let default_fs_namespace = Arc::new(CrateNamespace::new(fs_name, default_fs_namespace_dir, Some(default_kernel_namespace.clone())));
+    FILE_SYSTEM_NAMESPACE.call_once(|| default_fs_namespace);
+    INITIAL_KERNEL_NAMESPACE.call_once(|| default_kernel_namespace);
+    Ok(INITIAL_KERNEL_NAMESPACE.get().unwrap())
 }
 
 
@@ -130,7 +155,7 @@ pub fn init(
 fn parse_bootloader_modules_into_files(
     bootloader_modules: Vec<BootloaderModule>,
     kernel_mmi: &mut MemoryManagementInfo
-) -> Result<(DirRef, NamespaceDir), &'static str> {
+) -> Result<(DirRef, NamespaceDir, NamespaceDir), &'static str> {
 
     // create the top-level directory to hold all default namespaces
     let namespaces_dir = VFSDirectory::create(NAMESPACES_DIRECTORY_NAME.to_string(), root::get_root())?;
@@ -159,6 +184,7 @@ fn parse_bootloader_modules_into_files(
 
 
         let dir_name = format!("{}{}", prefix, crate_type.default_namespace_name());
+
         /*
         if file_name.starts_with("nano_core."){
         debug!("Filename {:?}, prefix{},  dirname: {}", file_name,  prefix,dir_name);
@@ -231,18 +257,17 @@ fn parse_bootloader_modules_into_files(
                 return Err(err_msg);
             }
         }
-        if name.starts_with("k#nano"){
-        
-            debug!("{}",name)
-        }
+
 
         process_module(name, size, mp)?;
     }
+
 
     debug!("Created namespace directories: {:?}", prefix_map.keys().map(|s| &**s).collect::<Vec<&str>>().join(", "));
     Ok((
         namespaces_dir,
         prefix_map.remove(CrateType::Kernel.default_namespace_name()).ok_or("BUG: no default namespace found")?,
+        prefix_map.remove(CrateType::Filesystem.default_namespace_name()).ok_or("BUG: no default namespace found")?,
     ))
 }
 

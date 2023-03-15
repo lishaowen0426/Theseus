@@ -191,7 +191,6 @@ pub fn init(
     // 3. Start the first application(s).
     drop_after_init.drop_all();
     console::start_connection_detection()?;
-    test_kernel::init();
     first_application::start()?;
 
     info!("captain::init(): initialization done! Spawning an idle task on BSP core {} and enabling interrupts...", bsp_apic_id);
