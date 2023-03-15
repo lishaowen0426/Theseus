@@ -61,6 +61,7 @@ ABSOLUTE 0x5400
 current:
     .mode                  resw 1
 
+
 ; Keeps track of the "best" (highest-resolution) graphics mode so far
 best_mode:
     .mode                  resw 1
@@ -77,6 +78,7 @@ best_mode:
 	.greenfieldposition    resb 1
 	.bluemasksize          resb 1
 	.bluefieldposition     resb 1
+    .count                 resw 1
 %endif ; BIOS
 
 section .init.realmodetext16 progbits alloc exec nowrite
@@ -135,6 +137,7 @@ ap_start_realmode:
     mov word  [best_mode.width],    0
     mov word  [best_mode.height],   0
     mov dword [best_mode.physaddr], 0
+    mov word  [best_mode.count],      0
     
     ; WARNING: the below code must be kept in sync with the `GraphicInfo` struct 
     ;          in the `multicore_bringup` crate. 
@@ -168,6 +171,7 @@ get_vbe_card_info:
 ; Traverse the next mode in the list of available modes
 .next_mode:
     add si, 2           ; [fs:si] points to the next mode
+    mov [best_mode.count], si
     mov cx, [fs:si]     ; `cx` now holds the current mode index
     cmp cx, 0xFFFF      ; A mode index of 0xFFFF indicates we are done iterating over the modes.
     je mode_iter_done

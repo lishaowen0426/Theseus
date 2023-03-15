@@ -1,4 +1,5 @@
 #![no_std]
+use log::{debug, error, info};
 
 cfg_if::cfg_if! {
     if #[cfg(priority_scheduler)] {
@@ -12,7 +13,7 @@ cfg_if::cfg_if! {
 
 use task::TaskRef;
 
-/// Yields the current CPU by selecting a new `Task` to run 
+/// Yields the current CPU by selecting a new `Task` to run
 /// and then switching to that new `Task`.
 ///
 /// Preemption will be disabled while this function runs,
@@ -37,11 +38,8 @@ pub fn schedule() -> bool {
         return false; // keep running the same current task
     };
 
-    let (did_switch, recovered_preemption_guard) = task::task_switch(
-        next_task,
-        cpu_id,
-        preemption_guard,
-    ); 
+    let (did_switch, recovered_preemption_guard) =
+        task::task_switch(next_task, cpu_id, preemption_guard);
 
     // trace!("AFTER TASK_SWITCH CALL (CPU {}) new current: {:?}, interrupts are {}", cpu_id, task::get_my_current_task(), irq_safety::interrupts_enabled());
 
@@ -51,12 +49,14 @@ pub fn schedule() -> bool {
 
 /// Changes the priority of the given task with the given priority level.
 /// Priority values must be between 40 (maximum priority) and 0 (minimum prriority).
-/// This function returns an error when a scheduler without priority is loaded. 
+/// This function returns an error when a scheduler without priority is loaded.
 pub fn set_priority(_task: &TaskRef, _priority: u8) -> Result<(), &'static str> {
-    #[cfg(priority_scheduler)] {
+    #[cfg(priority_scheduler)]
+    {
         scheduler_priority::set_priority(_task, _priority)
     }
-    #[cfg(not(priority_scheduler))] {
+    #[cfg(not(priority_scheduler))]
+    {
         Err("no scheduler that uses task priority is currently loaded")
     }
 }
@@ -64,19 +64,23 @@ pub fn set_priority(_task: &TaskRef, _priority: u8) -> Result<(), &'static str> 
 /// Returns the priority of a given task.
 /// This function returns None when a scheduler without priority is loaded.
 pub fn get_priority(_task: &TaskRef) -> Option<u8> {
-    #[cfg(priority_scheduler)] {
+    #[cfg(priority_scheduler)]
+    {
         scheduler_priority::get_priority(_task)
     }
-    #[cfg(not(priority_scheduler))] {
+    #[cfg(not(priority_scheduler))]
+    {
         None
     }
 }
 
 pub fn set_periodicity(_task: &TaskRef, _period: usize) -> Result<(), &'static str> {
-    #[cfg(realtime_scheduler)] {
+    #[cfg(realtime_scheduler)]
+    {
         scheduler_realtime::set_periodicity(_task, _period)
     }
-    #[cfg(not(realtime_scheduler))] {
+    #[cfg(not(realtime_scheduler))]
+    {
         Err("no scheduler that supports periodic tasks is currently loaded")
     }
 }

@@ -380,6 +380,7 @@ dependencies = [
  "stack",
  "task",
  "task_fs",
+ "test_kernel",
  "tlb_shootdown",
  "tsc",
  "vga_buffer",
@@ -3732,6 +3733,16 @@ dependencies = [
  "log",
  "network_interface_card",
  "spawn",
+]
+
+[[package]]
+name = "test_kernel"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "logger_x86_64",
+ "memory",
+ "mod_mgmt",
 ]
 
 [[package]]

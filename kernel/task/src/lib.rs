@@ -1452,6 +1452,7 @@ pub fn bootstrap_task(
     let default_namespace = mod_mgmt::get_initial_kernel_namespace()
         .ok_or("The initial kernel CrateNamespace must be initialized before the tasking subsystem.")?
         .clone();
+    debug!("inital_kernel_namespace:{}", default_namespace.name());
     let default_env = Arc::new(Mutex::new(Environment::default()));
     let mut bootstrap_task = Task::new_internal(
         stack.into_inner(),

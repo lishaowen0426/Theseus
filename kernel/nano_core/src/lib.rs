@@ -21,6 +21,7 @@
 
 extern crate panic_entry;
 
+use boot_info::ElfSection;
 use core::ops::DerefMut;
 use kernel_config::memory::KERNEL_OFFSET;
 use memory::VirtualAddress;
@@ -124,6 +125,19 @@ where
         rsdp_address
     );
 
+    {
+        println_raw!("kernel sections:");
+        let elf_iter = boot_info.elf_sections().unwrap();
+        for section in elf_iter {
+            println_raw!(
+                "    name:: {}, start: 0x{:x}, len: {}",
+                section.name(),
+                section.start(),
+                section.len()
+            );
+        }
+    }
+
     // init memory management: set up stack with guard page, heap, kernel text/data mappings, etc
     let (
         kernel_mmi_ref,
@@ -145,6 +159,7 @@ where
     println_raw!("nano_core(): initialized state store.");
 
     // initialize the module management subsystem, so we can create the default crate namespace
+    // this default namespace is '_kernel'
     let default_namespace = mod_mgmt::init(bootloader_modules, kernel_mmi_ref.lock().deref_mut())?;
     println_raw!("nano_core(): initialized crate namespace subsystem.");
 
@@ -221,6 +236,10 @@ where
         // try_exit!(mod_mgmt::replace_nano_core_crates::replace_nano_core_crates(&default_namespace, nano_core_crate_ref, &kernel_mmi_ref));
     }
     drop(nano_core_crate_ref);
+
+    //up to here, only nano_core has been loaded as a crate
+    //other modules are only loaded as MemFile into the namespace
+    // this is why in the following, we still need to load the captain crate
 
     // if in loadable mode, parse the crates we always need: the core library (Rust no_std lib), the panic handlers, and the captain
     #[cfg(loadable)]

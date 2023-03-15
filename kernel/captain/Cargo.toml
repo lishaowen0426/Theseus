@@ -105,6 +105,9 @@ path = "../task_fs"
 [dependencies.multiple_heaps]
 path = "../multiple_heaps"
 
+[dependencies.test_kernel]
+path = "../test_kernel"
+
 [features]
 # TODO: Remove when UEFI is fully implemented
 uefi = []

@@ -845,14 +845,14 @@ QEMU_FLAGS += -serial mon:$(SERIAL2)
 ## `-vga none`:      removes the VGA card
 ## `-display none`:  disables QEMU's graphical display
 ## `-nographic`:     disables QEMU's graphical display and redirects VGA text mode output to serial.
-# QEMU_FLAGS += -display none -vga none
+QEMU_FLAGS += -display none -vga std
 
 ## Set the amount of system memory (RAM) provided to the QEMU guest OS
 QEMU_MEMORY ?= 512M
 QEMU_FLAGS += -m $(QEMU_MEMORY) 
 
 ## Enable multicore CPUs, i.e., SMP (Symmetric Multi-Processor)
-QEMU_CPUS ?= 4
+QEMU_CPUS ?= 2
 QEMU_FLAGS += -smp $(QEMU_CPUS)
 
 ## Add a disk drive, a PATA drive over an IDE controller interface.
@@ -937,6 +937,9 @@ orun_pause:
 loadable : export override THESEUS_CONFIG += loadable
 loadable: run
 
+### builds and runs Theseus in loadable mode, where all crates are dynamically loaded.
+loadable_pause : export override THESEUS_CONFIG += loadable
+loadable_pause: run_pause
 
 ### builds and runs Theseus with wasmtime enabled.
 wasmtime : export override FEATURES += --features wasmtime

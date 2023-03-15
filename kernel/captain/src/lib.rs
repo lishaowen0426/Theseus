@@ -1,6 +1,6 @@
-//! The main initialization routine and setup logic of the OS. 
+//! The main initialization routine and setup logic of the OS.
 //!
-//! The `captain` steers the ship of Theseus, meaning that it contains basic logic 
+//! The `captain` steers the ship of Theseus, meaning that it contains basic logic
 //! for initializing all of the other crates in the proper order and with
 //! the proper flow of data between them.
 //!
@@ -11,7 +11,7 @@
 //! * Sets up basic device drivers,
 //! * Spawns event handling threads,
 //! * Initializes the window manager and graphics subsystem,
-//! * etc. 
+//! * etc.
 //!
 //! At the end, the `captain` enables interrupts to allow the system to schedule in other tasks.
 
@@ -20,14 +20,14 @@
 extern crate alloc;
 
 use core::ops::DerefMut;
+use irq_safety::enable_interrupts;
+use kernel_config::memory::KERNEL_STACK_SIZE_IN_PAGES;
 use log::{error, info};
 use memory::{EarlyIdentityMappedPages, MmiRef, PhysicalAddress, VirtualAddress};
-use kernel_config::memory::KERNEL_STACK_SIZE_IN_PAGES;
-use irq_safety::enable_interrupts;
 use mod_mgmt::TlsDataImage;
-use stack::Stack;
 use no_drop::NoDrop;
-
+use stack::Stack;
+use test_kernel;
 
 #[cfg(all(mirror_log_to_vga, target_arch = "x86_64"))]
 mod mirror_log_callbacks {
@@ -55,12 +55,11 @@ impl DropAfterInit {
     }
 }
 
-
-/// Initialize the Captain, which is the main crate that "steers the ship" of Theseus. 
-/// 
-/// This does the rest of the initialization procedures so that the OS 
+/// Initialize the Captain, which is the main crate that "steers the ship" of Theseus.
+///
+/// This does the rest of the initialization procedures so that the OS
 /// can continue running and do actual useful work.
-/// 
+///
 /// # Arguments
 /// * `kernel_mmi_ref`: a reference to the kernel's memory management info.
 /// * `identity_mapped_pages`: the memory containing the identity-mapped content,
@@ -81,7 +80,8 @@ pub fn init(
     ap_gdt: VirtualAddress,
     rsdp_address: Option<PhysicalAddress>,
 ) -> Result<(), &'static str> {
-    #[cfg(all(mirror_log_to_vga, target_arch = "x86_64"))] {
+    #[cfg(all(mirror_log_to_vga, target_arch = "x86_64"))]
+    {
         // Enable early mirroring of logger output to VGA buffer (for real hardware)
         logger_x86_64::set_log_mirror_function(mirror_log_callbacks::mirror_to_early_vga);
     }
@@ -104,10 +104,14 @@ pub fn init(
                 .ok_or("could not allocate privilege stack")?,
         )
     };
-    let idt = interrupts::init(double_fault_stack.top_unusable(), privilege_stack.top_unusable())?;
-    
+    let idt = interrupts::init(
+        double_fault_stack.top_unusable(),
+        privilege_stack.top_unusable(),
+    )?;
+
     // get BSP's apic id
-    let bsp_apic_id = cpu::bootstrap_cpu().ok_or("captain::init(): couldn't get ID of bootstrap CPU!")?;
+    let bsp_apic_id =
+        cpu::bootstrap_cpu().ok_or("captain::init(): couldn't get ID of bootstrap CPU!")?;
 
     // create the initial `Task`, which is bootstrapped from this execution context.
     let bootstrap_task = spawn::init(kernel_mmi_ref.clone(), bsp_apic_id, bsp_initial_stack)?;
@@ -115,7 +119,7 @@ pub fn init(
 
     // after we've initialized the task subsystem, we can use better exception handlers
     exceptions_full::init(idt);
-    
+
     // boot up the other cores (APs)
     let ap_count = multicore_bringup::handle_ap_cores(
         &kernel_mmi_ref,
@@ -125,9 +129,13 @@ pub fn init(
         Some(kernel_config::display::FRAMEBUFFER_MAX_RESOLUTION),
     )?;
     let cpu_count = ap_count + 1;
-    info!("Finished handling and booting up all {} AP cores; {} total CPUs are running.", ap_count, cpu_count);
+    info!(
+        "Finished handling and booting up all {} AP cores; {} total CPUs are running.",
+        ap_count, cpu_count
+    );
 
-    #[cfg(mirror_log_to_vga)] {
+    #[cfg(mirror_log_to_vga)]
+    {
         // Currently, handling the AP cores also siwtches the graphics mode
         // (from text mode VGA to a graphical framebuffer).
         // Thus, we can now use enable the function that mirrors logger output to the terminal.
@@ -137,19 +145,20 @@ pub fn init(
     // Now that other CPUs are fully booted, init TLB shootdowns,
     // which rely on Local APICs to broadcast an IPI to all running CPUs.
     tlb_shootdown::init();
-    
+
     // Initialize the per-core heaps.
     multiple_heaps::switch_to_multiple_heaps()?;
     info!("Initialized per-core heaps");
 
-    #[cfg(feature = "uefi")] {
+    #[cfg(feature = "uefi")]
+    {
         log::error!("uefi boot cannot proceed as it is not fully implemented");
         loop {}
     }
 
     // Initialize the window manager, and also the PAT, if available.
     // The PAT supports write-combining caching of graphics video memory for better performance
-    // and must be initialized explicitly on every CPU, 
+    // and must be initialized explicitly on every CPU,
     // but it is not a fatal error if it doesn't exist.
     if page_attribute_table::init().is_err() {
         error!("This CPU does not support the Page Attribute Table");
@@ -161,12 +170,16 @@ pub fn init(
     task_fs::init()?;
 
     // create a SIMD personality
-    #[cfg(simd_personality)] {
+    #[cfg(simd_personality)]
+    {
         #[cfg(simd_personality_sse)]
         let simd_ext = task::SimdExt::SSE;
         #[cfg(simd_personality_avx)]
         let simd_ext = task::SimdExt::AVX;
-        log::warn!("SIMD_PERSONALITY FEATURE ENABLED, creating a new personality with {:?}!", simd_ext);
+        log::warn!(
+            "SIMD_PERSONALITY FEATURE ENABLED, creating a new personality with {:?}!",
+            simd_ext
+        );
         spawn::new_task_builder(simd_personality::setup_simd_personality, simd_ext)
             .name(alloc::format!("setup_simd_personality_{:?}", simd_ext))
             .spawn()?;
@@ -178,6 +191,7 @@ pub fn init(
     // 3. Start the first application(s).
     drop_after_init.drop_all();
     console::start_connection_detection()?;
+    test_kernel::init();
     first_application::start()?;
 
     info!("captain::init(): initialization done! Spawning an idle task on BSP core {} and enabling interrupts...", bsp_apic_id);
@@ -197,7 +211,7 @@ pub fn init(
     // ****************************************************
 
     scheduler::schedule();
-    loop { 
+    loop {
         error!("BUG: captain::init(): captain's bootstrap task was rescheduled after being dead!");
     }
 }

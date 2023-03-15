@@ -12,6 +12,7 @@ use alloc::{
     string::{String, ToString}, 
     sync::{Arc, Weak}, vec::Vec
 };
+use root::ROOT_DIRECTORY_NAME;
 use spin::{Mutex, Once};
 use xmas_elf::{ElfFile, sections::{SHF_ALLOC, SHF_EXECINSTR, SHF_TLS, SHF_WRITE, SectionData, ShType}, symbol_table::{Binding, Type}};
 use memory::{MmiRef, MemoryManagementInfo, VirtualAddress, MappedPages, PteFlags, allocate_pages_by_bytes, allocate_frames_by_bytes_at};
@@ -109,6 +110,7 @@ pub fn init(
     let (_namespaces_dir, default_kernel_namespace_dir) = parse_bootloader_modules_into_files(bootloader_modules, kernel_mmi)?;
     // Create the default CrateNamespace for kernel crates.
     let name = default_kernel_namespace_dir.lock().get_name();
+    debug!("default kernel namespace dir: {}", name);
     let default_namespace = CrateNamespace::new(name, default_kernel_namespace_dir, None);
     Ok(INITIAL_KERNEL_NAMESPACE.call_once(|| Arc::new(default_namespace)))
 }
@@ -135,6 +137,7 @@ fn parse_bootloader_modules_into_files(
     // create the top-level directory to hold all extra files
     let extra_files_dir = VFSDirectory::create(EXTRA_FILES_DIRECTORY_NAME.to_string(), root::get_root())?;
 
+
     // a map that associates a prefix string (e.g., "sse" in "ksse#crate.o") to a namespace directory of object files 
     let mut prefix_map: BTreeMap<String, NamespaceDir> = BTreeMap::new();
 
@@ -151,8 +154,17 @@ fn parse_bootloader_modules_into_files(
             return Ok(());
         };
 
+
+
+
+
         let dir_name = format!("{}{}", prefix, crate_type.default_namespace_name());
-        // debug!("Module: {:?}, size {}, mp: {:?}", name, size, pages);
+        /*
+        if file_name.starts_with("nano_core."){
+        debug!("Filename {:?}, prefix{},  dirname: {}", file_name,  prefix,dir_name);
+        
+        }
+        */
 
         let create_file = |dir: &DirRef| {
             MemFile::from_mapped_pages(pages, file_name.to_string(), size, dir)
@@ -218,6 +230,10 @@ fn parse_bootloader_modules_into_files(
                 error!("{}", err_msg);
                 return Err(err_msg);
             }
+        }
+        if name.starts_with("k#nano"){
+        
+            debug!("{}",name)
         }
 
         process_module(name, size, mp)?;
@@ -330,6 +346,7 @@ impl NamespaceDir {
         let children = dir_locked.list();
         children.into_iter().filter_map(|name| {
             if name.starts_with(prefix) {
+                debug!("nano core name: {}", name);
                 dir_locked.get_file(&name)
             } else {
                 None
@@ -733,6 +750,8 @@ impl CrateNamespace {
             .into_iter()
             .map(|f| (f, namespace))
             .collect::<Vec<_>>();
+
+
 
         // Second, we make a similar list for the recursive namespace.
         let mut files_in_recursive_namespace = namespace.recursive_namespace.as_ref()
@@ -2177,6 +2196,10 @@ impl CrateNamespace {
                                     source_sec_name
                                 };
                                 let demangled = demangle(source_sec_name).to_string();
+
+                           if demangled.starts_with("test_kernel"){ 
+                                debug!("foreign source sec:{}", demangled);
+                                }
 
                                 // search for the symbol's demangled name in the kernel's symbol map
                                 self.get_symbol_or_load(&demangled, temp_backup_namespace, kernel_mmi_ref, verbose_log)

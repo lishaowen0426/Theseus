@@ -19,38 +19,39 @@ extern crate alloc;
 
 mod paging;
 pub use self::paging::{
-    PageTable, Mapper, Mutability, Mutable, Immutable,
-    MappedPages, BorrowedMappedPages, BorrowedSliceMappedPages,
-    translate,
+    translate, BorrowedMappedPages, BorrowedSliceMappedPages, Immutable, MappedPages, Mapper,
+    Mutability, Mutable, PageTable,
 };
 
-pub use memory_structs::{Frame, Page, FrameRange, PageRange, VirtualAddress, PhysicalAddress};
+pub use memory_structs::{Frame, FrameRange, Page, PageRange, PhysicalAddress, VirtualAddress};
 pub use page_allocator::{
-    AllocatedPages, allocate_pages, allocate_pages_at,
-    allocate_pages_by_bytes, allocate_pages_by_bytes_at,
+    allocate_pages, allocate_pages_at, allocate_pages_by_bytes, allocate_pages_by_bytes_at,
+    AllocatedPages,
 };
 
 pub use frame_allocator::{
+    allocate_frames, allocate_frames_at, allocate_frames_by_bytes, allocate_frames_by_bytes_at,
     AllocatedFrames, MemoryRegionType, PhysicalMemoryRegion,
-    allocate_frames, allocate_frames_at, allocate_frames_by_bytes_at, allocate_frames_by_bytes,
 };
 
 #[cfg(target_arch = "x86_64")]
-use memory_x86_64::{ tlb_flush_virt_addr, tlb_flush_all, get_p4, find_section_memory_bounds, get_vga_mem_addr };
+use memory_x86_64::{
+    find_section_memory_bounds, get_p4, get_vga_mem_addr, tlb_flush_all, tlb_flush_virt_addr,
+};
 
 #[cfg(target_arch = "aarch64")]
-use memory_aarch64::{ tlb_flush_virt_addr, tlb_flush_all, get_p4, find_section_memory_bounds };
+use memory_aarch64::{find_section_memory_bounds, get_p4, tlb_flush_all, tlb_flush_virt_addr};
 
 pub use pte_flags::*;
 
-use boot_info::{BootInformation, MemoryRegion};
-use log::debug;
-use spin::Once;
-use irq_safety::MutexIrqSafe;
-use alloc::vec::Vec;
 use alloc::sync::Arc;
-use no_drop::NoDrop;
+use alloc::vec::Vec;
+use boot_info::{BootInformation, MemoryRegion};
+use irq_safety::MutexIrqSafe;
 pub use kernel_config::memory::PAGE_SIZE;
+use log::debug;
+use no_drop::NoDrop;
+use spin::Once;
 
 /// The memory management info and address space of the kernel
 static KERNEL_MMI: Once<MmiRef> = Once::new();
@@ -64,7 +65,6 @@ pub fn get_kernel_mmi_ref() -> Option<&'static MmiRef> {
     KERNEL_MMI.get()
 }
 
-
 /// This holds all the information for a `Task`'s memory mappings and address space
 /// (this is basically the equivalent of Linux's mm_struct)
 #[derive(Debug)]
@@ -72,19 +72,18 @@ pub fn get_kernel_mmi_ref() -> Option<&'static MmiRef> {
 pub struct MemoryManagementInfo {
     /// the PageTable that should be switched to when this Task is switched to.
     pub page_table: PageTable,
-    
+
     /// The list of additional memory mappings that have the same lifetime as this MMI
     /// and are thus owned by this MMI.
     /// This currently includes only the mappings for the heap and the early VGA buffer.
     pub extra_mapped_pages: Vec<MappedPages>,
 }
 
-
 /// A convenience function that creates a new memory mapping by allocating frames that are contiguous in physical memory.
 /// If contiguous frames are not required, then see [`create_mapping()`](fn.create_mapping.html).
 /// Returns a tuple containing the new `MappedPages` and the starting PhysicalAddress of the first frame,
 /// which is a convenient way to get the physical address without walking the page tables.
-/// 
+///
 /// # Locking / Deadlock
 /// Currently, this function acquires the lock on the frame allocator and the kernel's `MemoryManagementInfo` instance.
 /// Thus, the caller should ensure that the locks on those two variables are not held when invoking this function.
@@ -92,20 +91,26 @@ pub fn create_contiguous_mapping<F: Into<PteFlagsArch>>(
     size_in_bytes: usize,
     flags: F,
 ) -> Result<(MappedPages, PhysicalAddress), &'static str> {
-    let kernel_mmi_ref = get_kernel_mmi_ref().ok_or("create_contiguous_mapping(): KERNEL_MMI was not yet initialized!")?;
-    let allocated_pages = allocate_pages_by_bytes(size_in_bytes).ok_or("memory::create_contiguous_mapping(): couldn't allocate contiguous pages!")?;
-    let allocated_frames = allocate_frames_by_bytes(size_in_bytes).ok_or("memory::create_contiguous_mapping(): couldn't allocate contiguous frames!")?;
+    let kernel_mmi_ref = get_kernel_mmi_ref()
+        .ok_or("create_contiguous_mapping(): KERNEL_MMI was not yet initialized!")?;
+    let allocated_pages = allocate_pages_by_bytes(size_in_bytes)
+        .ok_or("memory::create_contiguous_mapping(): couldn't allocate contiguous pages!")?;
+    let allocated_frames = allocate_frames_by_bytes(size_in_bytes)
+        .ok_or("memory::create_contiguous_mapping(): couldn't allocate contiguous frames!")?;
     let starting_phys_addr = allocated_frames.start_address();
-    let mp = kernel_mmi_ref.lock().page_table.map_allocated_pages_to(allocated_pages, allocated_frames, flags)?;
+    let mp = kernel_mmi_ref.lock().page_table.map_allocated_pages_to(
+        allocated_pages,
+        allocated_frames,
+        flags,
+    )?;
     Ok((mp, starting_phys_addr))
 }
-
 
 /// A convenience function that creates a new memory mapping. The pages allocated are contiguous in memory but there's
 /// no guarantee that the frames they are mapped to are also contiguous in memory. If contiguous frames are required
 /// then see [`create_contiguous_mapping()`](fn.create_contiguous_mapping.html).
-/// Returns the new `MappedPages.` 
-/// 
+/// Returns the new `MappedPages.`
+///
 /// # Locking / Deadlock
 /// Currently, this function acquires the lock on the kernel's `MemoryManagementInfo` instance.
 /// Thus, the caller should ensure that lock is not held when invoking this function.
@@ -113,11 +118,15 @@ pub fn create_mapping<F: Into<PteFlagsArch>>(
     size_in_bytes: usize,
     flags: F,
 ) -> Result<MappedPages, &'static str> {
-    let kernel_mmi_ref = get_kernel_mmi_ref().ok_or("create_contiguous_mapping(): KERNEL_MMI was not yet initialized!")?;
-    let allocated_pages = allocate_pages_by_bytes(size_in_bytes).ok_or("memory::create_mapping(): couldn't allocate pages!")?;
-    kernel_mmi_ref.lock().page_table.map_allocated_pages(allocated_pages, flags)
+    let kernel_mmi_ref = get_kernel_mmi_ref()
+        .ok_or("create_contiguous_mapping(): KERNEL_MMI was not yet initialized!")?;
+    let allocated_pages = allocate_pages_by_bytes(size_in_bytes)
+        .ok_or("memory::create_mapping(): couldn't allocate pages!")?;
+    kernel_mmi_ref
+        .lock()
+        .page_table
+        .map_allocated_pages(allocated_pages, flags)
 }
-
 
 static BROADCAST_TLB_SHOOTDOWN_FUNC: Once<fn(PageRange)> = Once::new();
 
@@ -159,7 +168,7 @@ pub struct InitialMemoryMappings {
 }
 
 /// The set of identity mappings that should be dropped before starting the first application.
-/// 
+///
 /// Currently there are only 4 identity mappings, used for the base kernel image:
 /// 1. the `.init` early text section,
 /// 2. the full `.text` section,
@@ -167,10 +176,10 @@ pub struct InitialMemoryMappings {
 /// 4. the `.data` section, which includes `.bss` and all read-write data.
 #[derive(Debug)]
 pub struct EarlyIdentityMappedPages {
-    _init:   MappedPages,
-    _text:   MappedPages,
+    _init: MappedPages,
+    _text: MappedPages,
     _rodata: MappedPages,
-    _data:   MappedPages,
+    _data: MappedPages,
 }
 
 /// Initializes the virtual memory management system.
@@ -180,34 +189,44 @@ pub fn init(
     boot_info: &impl BootInformation,
     kernel_stack_start: VirtualAddress,
 ) -> Result<InitialMemoryMappings, &'static str> {
-    let low_memory_frames   = FrameRange::from_phys_addr(PhysicalAddress::zero(), 0x10_0000); // suggested by most OS developers
-    
+    let low_memory_frames = FrameRange::from_phys_addr(PhysicalAddress::zero(), 0x10_0000); // suggested by most OS developers
+
     // Now set up the list of free regions and reserved regions so we can initialize the frame allocator.
     let mut free_regions: [Option<PhysicalMemoryRegion>; 32] = Default::default();
     let mut free_index = 0;
     let mut reserved_regions: [Option<PhysicalMemoryRegion>; 32] = Default::default();
     let mut reserved_index = 0;
 
-    reserved_regions[reserved_index] = Some(PhysicalMemoryRegion::new(low_memory_frames, MemoryRegionType::Reserved));
+    reserved_regions[reserved_index] = Some(PhysicalMemoryRegion::new(
+        low_memory_frames,
+        MemoryRegionType::Reserved,
+    ));
     reserved_index += 1;
 
     #[cfg(target_arch = "x86_64")]
-    {    
+    {
         // Add the VGA display's memory region to the list of reserved physical memory areas.
         // Currently this is covered by the first 1MiB region, but it's okay to duplicate it here.
         let (vga_start_paddr, vga_size, _vga_flags) = memory_x86_64::get_vga_mem_addr()?;
         let vga_display_frames = FrameRange::from_phys_addr(vga_start_paddr, vga_size);
-        reserved_regions[reserved_index] = Some(PhysicalMemoryRegion::new(vga_display_frames, MemoryRegionType::Reserved));
+        reserved_regions[reserved_index] = Some(PhysicalMemoryRegion::new(
+            vga_display_frames,
+            MemoryRegionType::Reserved,
+        ));
         reserved_index += 1;
     }
 
     for region in boot_info.memory_regions()? {
         let frames = FrameRange::from_phys_addr(region.start(), region.len());
         if region.is_usable() {
-            free_regions[free_index] = Some(PhysicalMemoryRegion::new(frames, MemoryRegionType::Free));
+            free_regions[free_index] =
+                Some(PhysicalMemoryRegion::new(frames, MemoryRegionType::Free));
             free_index += 1;
         } else {
-            reserved_regions[reserved_index] = Some(PhysicalMemoryRegion::new(frames, MemoryRegionType::Reserved));
+            reserved_regions[reserved_index] = Some(PhysicalMemoryRegion::new(
+                frames,
+                MemoryRegionType::Reserved,
+            ));
             reserved_index += 1;
         }
     }
@@ -220,9 +239,16 @@ pub fn init(
         reserved_index += 1;
     }
 
-    let into_alloc_frames_fn = frame_allocator::init(free_regions.iter().flatten(), reserved_regions.iter().flatten())?;
+    let into_alloc_frames_fn = frame_allocator::init(
+        free_regions.iter().flatten(),
+        reserved_regions.iter().flatten(),
+    )?;
     debug!("Initialized new frame allocator!");
     frame_allocator::dump_frame_allocator_state();
+
+    {
+        debug!("kernel end: 0x{:x}", boot_info.kernel_end().unwrap());
+    }
 
     page_allocator::init(
         VirtualAddress::new(
@@ -240,14 +266,15 @@ pub fn init(
     page_allocator::dump_page_allocator_state();
 
     // Initialize paging, which creates a new page table and maps all of the current code/data sections into it.
-    paging::init(boot_info, kernel_stack_start, into_alloc_frames_fn)
-        .inspect(|InitialMemoryMappings { page_table, .. } | {
+    paging::init(boot_info, kernel_stack_start, into_alloc_frames_fn).inspect(
+        |InitialMemoryMappings { page_table, .. }| {
             debug!("Done with paging::init(). new page table: {:?}", page_table);
-        })
+        },
+    )
 }
 
 /// Finishes initializing the memory management system after the heap is ready.
-/// 
+///
 /// Returns the following tuple:
 ///  * The kernel's new [`MemoryManagementInfo`], representing the initial virtual address space,
 ///  * The kernel's list of identity-mapped [`MappedPages`],
@@ -256,7 +283,7 @@ pub fn init(
 pub fn init_post_heap(
     page_table: PageTable,
     additional_mapped_pages: MappedPages,
-    heap_mapped_pages: MappedPages
+    heap_mapped_pages: MappedPages,
 ) -> MmiRef {
     // HERE: heap is initialized! We can now use `alloc` types.
 
@@ -264,16 +291,14 @@ pub fn init_post_heap(
     frame_allocator::convert_to_heap_allocated();
 
     let extra_mapped_pages = alloc::vec![additional_mapped_pages, heap_mapped_pages];
-   
+
     // Construct the kernel's memory mgmt info, i.e., its address space info
     let kernel_mmi = MemoryManagementInfo {
         page_table,
         extra_mapped_pages,
     };
 
-    let kernel_mmi_ref = KERNEL_MMI.call_once( || {
-        Arc::new(MutexIrqSafe::new(kernel_mmi))
-    });
+    let kernel_mmi_ref = KERNEL_MMI.call_once(|| Arc::new(MutexIrqSafe::new(kernel_mmi)));
 
     kernel_mmi_ref.clone()
 }
