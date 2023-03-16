@@ -52,6 +52,7 @@ NANO_CORE_BUILD_DIR     := $(BUILD_DIR)/nano_core
 iso                     := $(BUILD_DIR)/theseus-$(ARCH).$(ISO_EXTENSION)
 ISOFILES                := $(BUILD_DIR)/isofiles
 OBJECT_FILES_BUILD_DIR  := $(ISOFILES)/modules
+COMPONENTS_BUILD_DIR    := $(ISOFILES)/components
 DEBUG_SYMBOLS_DIR       := $(BUILD_DIR)/debug_symbols
 TARGET_DEPS_DIR         := $(ROOT_DIR)/target/$(TARGET)/$(BUILD_MODE)/deps
 DEPS_BUILD_DIR          := $(BUILD_DIR)/deps
@@ -166,7 +167,7 @@ endif
 ### Convert `THESEUS_CONFIG` values into `RUSTFLAGS` by prepending "--cfg " to each one.
 ### Note: this change to RUSTFLAGS is exported as an external shell environment variable
 ###       in order to make it easy to pass to sub-make invocations.
-###       However, this means we must not explicitly not use it for `cargo run` tool invocations,
+###       However, this means we must not explicitly use it for `cargo run` tool invocations,
 ###       because those should be built as normal for the host OS environment.
 export override RUSTFLAGS += $(patsubst %,--cfg %, $(THESEUS_CONFIG))
 
@@ -238,12 +239,13 @@ build: $(nano_core_binary)
 		--output-objects $(OBJECT_FILES_BUILD_DIR) \
 		--output-deps $(DEPS_BUILD_DIR) \
 		--output-sysroot $(DEPS_SYSROOT_DIR)/lib/rustlib/$(TARGET)/lib \
+		--output-components $(COMPONENTS_BUILD_DIR) \
 		-k ./kernel \
 		-a ./applications \
-		-f ./filesystems \
+		-c ./components \
 		--kernel-prefix $(KERNEL_PREFIX) \
 		--app-prefix $(APP_PREFIX) \
-		--fs-prefix $(FS_PREFIX) \
+		--comp-prefix $(FS_PREFIX) \
 		-e "$(EXTRA_APP_CRATE_NAMES) libtheseus"
 
 ## Third, perform partial linking on each object file, which shrinks their size 

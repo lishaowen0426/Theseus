@@ -71,6 +71,13 @@ fn main() -> Result<(), String> {
          typically part of the build directory, e.g., \"/path/to/build/deps/\"", 
         "OUTPUT_DIR"
     );
+    opts.reqopt(
+        "", 
+        "output-components",  
+        "(required) path to the output directory where component crate object files should be copied to, 
+         typically part of the build directory, e.g., \"/path/to/build/grub-isofiles/components\"", 
+        "OUTPUT_DIR"
+    );
     opts.optopt(
         "", 
         "output-sysroot",  
@@ -95,11 +102,11 @@ fn main() -> Result<(), String> {
         "APP_CRATES",
     );
     opts.reqopt(
-        "f",
-        "filesystem",
-        "(required) path to either the directory of filesystem crates,
-         or a file listing each filesystem crate name, one per line",
-        "FILESYSTEM_CRATES",
+        "c",
+        "component",
+        "(required) path to either the directory of component crates,
+         or a file listing each component crate name, one per line",
+        "COMPONENT_CRATES",
     );
     opts.optopt(
         "",
@@ -115,8 +122,8 @@ fn main() -> Result<(), String> {
     );
     opts.optopt(
         "",
-        "fs-prefix",
-        "the prefix prepended to filesystem crate object files when they're copied to the output directory (default 'f#')",
+        "comp-prefix",
+        "the prefix prepended to component crate object files when they're copied to the output directory (default 'f#')",
         "PREFIX"
     );
     opts.optmulti(
@@ -165,16 +172,16 @@ fn main() -> Result<(), String> {
         ));
     }
 
-    let mut fs_prefix = matches
-        .opt_str("fs-prefix")
-        .unwrap_or_else(|| "f".to_string());
-    if !fs_prefix.ends_with(MODULE_PREFIX_DELIMITER) {
-        fs_prefix.push_str(MODULE_PREFIX_DELIMITER);
+    let mut comp_prefix = matches
+        .opt_str("comp-prefix")
+        .unwrap_or_else(|| "c".to_string());
+    if !comp_prefix.ends_with(MODULE_PREFIX_DELIMITER) {
+        comp_prefix.push_str(MODULE_PREFIX_DELIMITER);
     }
-    if fs_prefix.matches(MODULE_PREFIX_DELIMITER).count() > 1 {
+    if comp_prefix.matches(MODULE_PREFIX_DELIMITER).count() > 1 {
         return Err(format!(
-            "fs-prefix {:?} must only contain one '#' character at the end!",
-            fs_prefix
+            "comp-prefix {:?} must only contain one '#' character at the end!",
+            comp_prefix
         ));
     }
 
@@ -186,13 +193,16 @@ fn main() -> Result<(), String> {
     let output_deps_dir = matches
         .opt_str("output-deps")
         .expect("no --output-deps arg provided");
+    let output_components_dir = matches
+        .opt_str("output-components")
+        .expect("no --output-components arg provided");
     let kernel_arg = matches
         .opt_str("k")
         .expect("no -k or --kernel arg provided");
     let app_arg = matches.opt_str("a").expect("no -a or --app arg provided");
-    let fs_arg = matches
-        .opt_str("f")
-        .expect("no -f or --filesystem arg provided");
+    let comp_arg = matches
+        .opt_str("c")
+        .expect("no -c or --component arg provided");
 
     let kernel_arg_path = fs::canonicalize(kernel_arg)
         .map_err(|e| format!("kernel arg was invalid path, error: {:?}", e))?;
@@ -224,18 +234,18 @@ fn main() -> Result<(), String> {
         ));
     };
 
-    let fs_arg_path =
-        fs::canonicalize(fs_arg).map_err(|e| format!("fs arg was invalid path, error: {:?}", e))?;
-    let mut fs_crates_set = if fs_arg_path.is_file() {
-        populate_crates_from_file(fs_arg_path)
-            .map_err(|e| format!("Error parsing fs arg as file: {:?}", e))?
-    } else if fs_arg_path.is_dir() {
-        populate_crates_from_dir(fs_arg_path)
-            .map_err(|e| format!("Error parsing fs arg as directory: {:?}", e))?
+    let comp_arg_path = fs::canonicalize(comp_arg)
+        .map_err(|e| format!("fs arg was invalid path, error: {:?}", e))?;
+    let mut comp_crates_set = if comp_arg_path.is_file() {
+        populate_crates_from_file(comp_arg_path)
+            .map_err(|e| format!("Error parsing comp arg as file: {:?}", e))?
+    } else if comp_arg_path.is_dir() {
+        populate_crates_from_dir(comp_arg_path)
+            .map_err(|e| format!("Error parsing comp arg as directory: {:?}", e))?
     } else {
         return Err(format!(
-            "Couldn't access -k/--fs argument {:?} as a file or directory",
-            fs_arg_path
+            "Couldn't access -k/--comp argument {:?} as a file or directory",
+            comp_arg_path
         ));
     };
     let extra_app_names = matches.opt_strs("e");
@@ -249,9 +259,15 @@ fn main() -> Result<(), String> {
     let (
         app_object_files,
         kernel_objects_and_deps_files,
-        fs_objects_and_deps_files,
+        comp_objects_and_deps_files,
         other_objects_and_deps_files,
-    ) = parse_input_dir(app_crates_set, kernel_crates_set, fs_crates_set, input_dir).unwrap();
+    ) = parse_input_dir(
+        app_crates_set,
+        kernel_crates_set,
+        comp_crates_set,
+        input_dir,
+    )
+    .unwrap();
 
     // Now that we have obtained the lists of kernel, app, and other crates,
     // we copy their crate object files into the output object directory with the proper prefix.
@@ -260,6 +276,12 @@ fn main() -> Result<(), String> {
         format!(
             "Error creating output objects directory {:?}, {:?}",
             output_objects_dir, e
+        )
+    })?;
+    fs::create_dir_all(&output_components_dir).map_err(|e| {
+        format!(
+            "Error creating output components directory {:?}, {:?}",
+            output_components_dir, e
         )
     })?;
     copy_files(
@@ -277,11 +299,11 @@ fn main() -> Result<(), String> {
     )
     .unwrap();
     copy_files(
-        &output_objects_dir,
-        fs_objects_and_deps_files
+        &output_components_dir,
+        comp_objects_and_deps_files
             .values()
             .map(|(obj_direnty, _)| obj_direnty.path()),
-        &fs_prefix,
+        &comp_prefix,
     )
     .unwrap();
     copy_files(
@@ -311,7 +333,7 @@ fn main() -> Result<(), String> {
     .unwrap();
     copy_files(
         &output_deps_dir,
-        fs_objects_and_deps_files
+        comp_objects_and_deps_files
             .values()
             .flat_map(|(_, deps)| deps.iter()),
         "",
@@ -440,7 +462,7 @@ const RLIB_EXTENSION: &str = "rlib";
 fn parse_input_dir(
     app_crates: HashSet<String>,
     kernel_crates: HashSet<String>,
-    fs_crates: HashSet<String>,
+    comp_crates: HashSet<String>,
     input_dir: String,
 ) -> std::io::Result<(
     CrateObjectFiles,
@@ -450,7 +472,7 @@ fn parse_input_dir(
 )> {
     let mut app_objects = CrateObjectFiles::new();
     let mut kernel_files = CrateObjectAndDepsFiles::new();
-    let mut fs_files = CrateObjectAndDepsFiles::new();
+    let mut comp_files = CrateObjectAndDepsFiles::new();
     let mut other_files = CrateObjectAndDepsFiles::new();
 
     for dir_entry in fs::read_dir(input_dir)? {
@@ -505,8 +527,8 @@ fn parse_input_dir(
                     vacant.insert(generate_deps_paths(dir_entry));
                 }
             }
-        } else if fs_crates.contains(prefix) {
-            match fs_files.entry(prefix.to_string()) {
+        } else if comp_crates.contains(prefix) {
+            match comp_files.entry(prefix.to_string()) {
                 Entry::Occupied(mut occupied) => {
                     if occupied.get().0.metadata()?.modified()? < modified_time {
                         occupied.insert(generate_deps_paths(dir_entry));
@@ -527,13 +549,13 @@ fn parse_input_dir(
         print_crates_objects(&app_objects, PRINT_SORTED);
         println!("KERNEL OBJECT FILES AND DEPS FILES:");
         print_crates_objects_and_deps(&kernel_files, PRINT_SORTED);
-        println!("FILESYSTEM OBJECT FILES AND DEPS FILES:");
-        print_crates_objects_and_deps(&fs_files, PRINT_SORTED);
+        println!("COMPONENT OBJECT FILES AND DEPS FILES:");
+        print_crates_objects_and_deps(&comp_files, PRINT_SORTED);
         println!("OTHER OBJECT FILES AND DEPS FILES:");
         print_crates_objects_and_deps(&other_files, PRINT_SORTED);
     }
 
-    Ok((app_objects, kernel_files, fs_files, other_files))
+    Ok((app_objects, kernel_files, comp_files, other_files))
 }
 
 /// Copies each file in the `files` iterator into the given `output_dir`.

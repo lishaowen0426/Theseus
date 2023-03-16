@@ -3,6 +3,6 @@
 use log::{debug, error, info};
 
 pub fn init() {
-    debug!("Hello from the first filesystem");
+    debug!("Hello from the first component");
     loop {}
 }
