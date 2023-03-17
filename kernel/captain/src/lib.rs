@@ -27,7 +27,6 @@ use memory::{EarlyIdentityMappedPages, MmiRef, PhysicalAddress, VirtualAddress};
 use mod_mgmt::TlsDataImage;
 use no_drop::NoDrop;
 use stack::Stack;
-use test_kernel;
 
 #[cfg(all(mirror_log_to_vga, target_arch = "x86_64"))]
 mod mirror_log_callbacks {

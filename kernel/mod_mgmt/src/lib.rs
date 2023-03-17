@@ -120,6 +120,21 @@ pub fn create_component_namespace(recursive_namespace: Option<Arc<CrateNamespace
 }
 
 
+/// `prefix` is the part before hash
+/// for example:
+/// the `prefix` of 'c#basic-dcb5b861dcfaa307.o' is 'c#basic'
+pub fn load_crate_object_files_into_component(prefix: &str){
+
+    let root = root::get_root();
+    for d in root.lock().list().iter(){
+        debug!("root dir: {}",d);
+    }
+
+
+
+}
+
+
 
 /// Initializes the module management system based on the bootloader-provided modules, 
 /// and creates and returns the default `CrateNamespace` for kernel crates.
@@ -135,6 +150,7 @@ pub fn init(
     INITIAL_KERNEL_NAMESPACE.call_once(|| default_kernel_namespace);
     let component_namespace = create_component_namespace(None).unwrap();
     debug!("component namespace:{}", component_namespace.name());
+    load_crate_object_files_into_component("");
 
     Ok(INITIAL_KERNEL_NAMESPACE.get().unwrap())
 }

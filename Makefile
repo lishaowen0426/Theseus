@@ -245,7 +245,7 @@ build: $(nano_core_binary)
 		-c ./components \
 		--kernel-prefix $(KERNEL_PREFIX) \
 		--app-prefix $(APP_PREFIX) \
-		--comp-prefix $(FS_PREFIX) \
+		--comp-prefix $(COMP_PREFIX) \
 		-e "$(EXTRA_APP_CRATE_NAMES) libtheseus"
 
 ## Third, perform partial linking on each object file, which shrinks their size 
@@ -862,10 +862,12 @@ QEMU_FLAGS += -smp $(QEMU_CPUS)
 
 ## Add a disk drive, a PATA drive over an IDE controller interface.
 ## Currently this is only supported on x86_64.
-DISK_IMAGE ?= fat32.img
+DISK_IMAGE ?= fat.img
 ifeq ($(ARCH),x86_64)
 ifneq ($(wildcard $(DISK_IMAGE)),) 
-	QEMU_FLAGS += -drive format=raw,file=fat32.img,if=ide
+	QEMU_FLAGS += -drive format=raw,file=fat.img,if=ide
+else
+	$(error "The hard drive image file $(DISK_IMAGE) is not found")
 endif
 endif
 

@@ -36,7 +36,7 @@ CFG_DIR := $(ROOT_DIR)/cfg
 KERNEL_PREFIX       ?= k\#
 APP_PREFIX          ?= a\#
 EXECUTABLE_PREFIX   ?= e\#
-FS_PREFIX           ?= f\#
+COMP_PREFIX           ?= c\#
 
 ## By default, the Makefile will build the entire Theseus workspace
 ## as specified by the `members` set in the top-level `Cargo.toml` file

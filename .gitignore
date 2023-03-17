@@ -40,3 +40,7 @@ github_pages/doc/
 #tags
 tag*
 .tag*
+
+
+#qemu drive
+*.img

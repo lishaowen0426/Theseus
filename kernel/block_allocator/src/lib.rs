@@ -10,7 +10,6 @@
 // Allocator code taken from Philipp Oppermann's blog "Writing an OS in Rust" (https://github.com/phil-opp/blog_os/tree/post-11)
 // and modified by Ramla Ijaz
 
-
 // TODO: add documentation to each unsafe block, laying out all the conditions under which it's safe or unsafe to use it.
 #![allow(clippy::missing_safety_doc)]
 #![feature(const_mut_refs)]
@@ -49,7 +48,6 @@ pub struct FixedSizeBlockAllocator {
 }
 
 impl FixedSizeBlockAllocator {
-
     /// Creates an empty FixedSizeBlockAllocator.
     pub const fn new() -> Self {
         const SIZE: usize = BLOCK_SIZES.len();
@@ -79,9 +77,9 @@ impl FixedSizeBlockAllocator {
 
     /// Allocates a chunk of the given size with the given alignment. Returns a pointer to the
     /// beginning of that chunk if it was successful. Else it returns a null pointer.
-    /// 
-    /// Allocator first tries to find the smallest block size that is greater or equal to the required size. 
-    /// If a block of that size is available then it is returned, 
+    ///
+    /// Allocator first tries to find the smallest block size that is greater or equal to the required size.
+    /// If a block of that size is available then it is returned,
     /// otherwise it tries to allocate from the fallback allocator.
     pub unsafe fn allocate(&mut self, layout: Layout) -> *mut u8 {
         match list_index(&layout) {
@@ -103,17 +101,17 @@ impl FixedSizeBlockAllocator {
             }
             None => self.fallback_alloc(layout),
         }
-    } 
+    }
 
     /// Frees the given allocation. `ptr` must be a pointer returned
     /// by a call to the `allocate` function with identical size and alignment. Undefined
     /// behavior may occur for invalid arguments, thus this function is unsafe.
-    /// 
-    /// If the allocation returned is one of the fixed block sizes, 
+    ///
+    /// If the allocation returned is one of the fixed block sizes,
     /// then it is returned to the head of the block list.
     /// Otherwise, it is deallocated using the fallback allocator.
     pub unsafe fn deallocate(&mut self, ptr: *mut u8, layout: Layout) {
-         match list_index(&layout) {
+        match list_index(&layout) {
             Some(index) => {
                 let new_node = ListNode {
                     next: self.list_heads[index].take(),
@@ -132,3 +130,4 @@ impl FixedSizeBlockAllocator {
         }
     }
 }
+
